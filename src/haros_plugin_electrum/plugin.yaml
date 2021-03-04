@@ -1,0 +1,15 @@
+%YAML 1.1
+# SPDX-License-Identifier: MIT
+# Copyright © 2021 André Santos
+---
+name: haros_plugin_electrum
+version: 0.1.0
+rules:
+    counterexample:
+        name: Counterexample Found
+        description: "The Electrum Analyzer found a counterexample."
+        tags:
+            - model-checking
+            - electrum
+            - hpl
+            - computation-graph
