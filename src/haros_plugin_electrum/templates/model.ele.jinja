@@ -1,0 +1,111 @@
+{# SPDX-License-Identifier: MIT #}
+{# Copyright © 2021 André Santos #}
+
+
+{##############################################################################}
+{# HELPER MACROS #}
+{##############################################################################}
+
+{% macro topic_sig(topic) %}
+// topic {{ topic.rosname }}
+one sig {{ topic.name }} extends Topic {}
+{% endmacro %}
+
+{% macro node_sig(node) %}
+// node {{ node.rosname }}
+one sig {{ node.name }} extends Node {}{
+    {% if node.subs %}
+    subscribes = {{ node.subs|join(' + ') }}
+    {% else %}
+    subscribes = none
+    {% endif %}
+    {% if node.pubs %}
+    advertises = {{ node.pubs|join(' + ') }}
+    {% else %}
+    advertises = none
+    {% endif %}
+}
+
+{% if node.facts %}
+fact {{ node.name }}_behaviour {
+    {% for fact in node.facts %}
+{{ fact|indent(4, first=true) }}
+    {% endfor %}
+}
+{% endif %}
+{% endmacro %}
+
+{##############################################################################}
+{# MODEL TEMPLATE #}
+{##############################################################################}
+
+{# expects: model #}
+
+////////////////////////////////////////////////////////////////////////////////
+// TOPICS //
+////////////////////////////////////////////////////////////////////////////////
+
+abstract sig Topic {}
+
+{% for topic in model.topics %}
+{{ topic_sig(topic) }}
+{% endfor %}
+
+////////////////////////////////////////////////////////////////////////////////
+// VALUES //
+////////////////////////////////////////////////////////////////////////////////
+
+abstract sig Value {}
+
+sig NumericValue extends Value {}
+sig StringValue extends Value {}
+
+////////////////////////////////////////////////////////////////////////////////
+// MESSAGE FIELDS //
+////////////////////////////////////////////////////////////////////////////////
+
+abstract sig Field {}
+
+////////////////////////////////////////////////////////////////////////////////
+// MESSAGES //
+////////////////////////////////////////////////////////////////////////////////
+
+sig Message {
+    topic: one Topic,
+    value: Field -> lone Value
+}{
+    some value
+}
+
+fact global_msg_invariants {
+    no (outbox + inbox)
+    all n: Node | always {
+        n.inbox.topic in n.subscribes
+        n.outbox.topic in n.advertises
+	}
+    all msg: Message | always {
+        msg in Node.outbox implies (all n: subscribes.(msg.topic) |
+            eventually (msg in n.inbox))
+    }
+    always {
+        all msg: Node.outbox | eventually msg not in Node.outbox
+    }
+    all msg: Message | always {
+        msg in Node.inbox implies (some n: advertises.(msg.topic) |
+            before once (msg in n.outbox))
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// NODES //
+////////////////////////////////////////////////////////////////////////////////
+
+abstract sig Node {
+    subscribes, advertises: set Topic,
+    var inbox, outbox: set Message
+}
+
+{% for node in model.nodes %}
+{{ node_sig(node) }}
+
+{% endfor %}

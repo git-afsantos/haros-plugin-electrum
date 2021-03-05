@@ -13,5 +13,6 @@
 # Module Functions
 ################################################################################
 
-def model_check(jar_path, ele_src):
+def model_check(jar_path, ele_src, scopes):
+    output = ''
     return output

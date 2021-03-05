@@ -10,31 +10,42 @@
 from __future__ import unicode_literals
 import os
 
+from jinja2 import Environment, PackageLoader
+
 from .analyzer import model_check
 from .electrum2haros import parse_output, render_result
 from .haros2electrum import config2model, render_model
 
 
-################################################################################
+###############################################################################
 # Plugin Entry Point
-################################################################################
+###############################################################################
+
+PLUGIN = 'haros_plugin_electrum'
 
 def configuration_analysis(iface, config):
     if (not config.launch_commands or len(config.nodes.enabled) < 2
             or not config.hpl_properties):
         return
-    settings = config.user_attributes.get('haros_plugin_electrum', {})
+    settings = config.user_attributes.get(PLUGIN, {})
     try:
         _validate_settings(settings)
     except PluginSettingsError as e:
         iface.log_error(e.message)
     jar_path = _get_jar_path(settings)
+    scopes = _get_scopes(settings)
+    jinja = Jinja()
     try:
         model = config2model(config)
-        ele_src = render_model(model)
-        output = model_check(jar_path, ele_src)
+        ele_src = render_model(jinja, model)
+        filename = 'model_{}.ele'.format('_'.join(config.name.split()))
+        with open(filename, 'w') as f:
+            f.write(ele_src)
+            f.write('\n')
+        iface.export_file(filename)
+        output = model_check(jar_path, ele_src, scopes)
         result = parse_output(output, config)
-        html = render_result(result)
+        html = render_result(jinja, result)
         iface.report_runtime_violation('counterexample', html, result.resources)
     except Exception as e:
         iface.log_error(e.message)
@@ -50,6 +61,12 @@ def _validate_settings(settings):
         raise PluginSettingsError.missing_jar_path()
     if 'env' in jar and not os.environ.get(jar['env']):
         raise PluginSettingsError.missing_env_var(jar['env'])
+    scopes = settings.get('scope')
+    if scopes:
+        for key in ('time', 'msgs', 'values'):
+            n = scopes.get(key)
+            if n is not None and (not isinstance(n, int) or n < 0):
+                raise PluginSettingsError.invalid_scope(key, n)
 
 def _get_jar_path(settings):
     jar = settings['jar']
@@ -59,10 +76,30 @@ def _get_jar_path(settings):
         path = os.environ[env_var]
     return path
 
+def _get_scopes(settings):
+    scopes = settings.get('scope', {})
+    if not 'time' in scopes:
+        scopes['time'] = 10
+    if not 'msgs' in scopes:
+        scopes['msgs'] = 9
+    if not 'values' in scopes:
+        scopes['values'] = 4
+    return scopes
 
-################################################################################
+
+###############################################################################
 # Data Structures
-################################################################################
+###############################################################################
+
+def Jinja():
+    return Environment(
+        loader=PackageLoader(PLUGIN, 'templates'),
+        line_statement_prefix=None,
+        line_comment_prefix=None,
+        trim_blocks=True,
+        lstrip_blocks=True,
+        autoescape=False
+    )
 
 class PluginSettingsError(Exception):
     @classmethod
@@ -80,3 +117,7 @@ class PluginSettingsError(Exception):
     @classmethod
     def missing_env_var(cls, var):
         return cls("missing '{}' env. variable with .jar path".format(var))
+
+    @classmethod
+    def invalid_scope(cls, key, n):
+        return cls("invalid scope value for '{}': {}".format(key, n))

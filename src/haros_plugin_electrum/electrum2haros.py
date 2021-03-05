@@ -14,8 +14,10 @@
 ################################################################################
 
 def parse_output(output, config):
+    result = {}
     return result
 
 
-def render_result(result):
+def render_result(jinja, result):
+    html = ''
     return html
